@@ -1,0 +1,60 @@
+# Builds the v2-papers branch of vpuzrina/vpuzrina.github.io and publishes it here,
+# at https://vpuzrina.github.io/site-preview/, with noindex on every page.
+# Needs: Settings → Pages → Source: GitHub Actions (in this repository).
+# Runs on a push to this repo, every 6 hours, or by hand (Actions → Build preview → Run workflow).
+name: Build preview
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: vpuzrina/vpuzrina.github.io
+          ref: v2-papers
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Chromium prints the CV PDF and renders the Open Graph images after the build
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - name: Build (preview base, noindex, [TODO] markers allowed)
+        run: npm run build
+        env:
+          SITE_BASE: /site-preview
+          PREVIEW: '1'
+      - name: Check links
+        run: node tests/e2e/links.mjs
+        env:
+          SITE_BASE: /site-preview
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
